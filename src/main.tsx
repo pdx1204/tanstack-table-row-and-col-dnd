@@ -4,7 +4,9 @@ import ReactDOM from "react-dom/client";
 import "./index.css";
 
 import {
+  Cell,
   ColumnDef,
+  Header,
   Row,
   flexRender,
   getCoreRowModel,
@@ -24,9 +26,13 @@ import {
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
-import { restrictToVerticalAxis } from "@dnd-kit/modifiers";
+import {
+  restrictToHorizontalAxis,
+  restrictToVerticalAxis,
+} from "@dnd-kit/modifiers";
 import {
   arrayMove,
+  horizontalListSortingStrategy,
   SortableContext,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
@@ -35,21 +41,59 @@ import {
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 
-// Cell Component
-const RowDragHandleCell = ({ rowId }: { rowId: string }) => {
-  const { attributes, listeners } = useSortable({
-    id: rowId,
-  });
+const RowDragHandle = ({ rowId }: { rowId: string }) => {
+  const { transform, transition, isDragging, attributes, listeners } =
+    useSortable({
+      id: rowId,
+    });
+  const style: CSSProperties = {
+    transform: CSS.Transform.toString(transform), //let dnd-kit do its thing
+    transition: transition,
+    opacity: isDragging ? 0.8 : 1,
+    zIndex: isDragging ? 1 : 0,
+    position: "relative",
+  };
   return (
     // Alternatively, you could set these attributes on the rows themselves
-    <button {...attributes} {...listeners}>
+    <button {...attributes} {...listeners} style={style}>
+      🟰
+    </button>
+  );
+};
+
+const ColDragHandle = ({ header }: { header: Header<Person, unknown> }) => {
+  console.log(header, "header-1");
+
+  const { attributes, isDragging, listeners, setNodeRef, transform } =
+    useSortable({
+      id: header.column.id,
+    });
+
+  const style: CSSProperties = {
+    opacity: isDragging ? 0.8 : 1,
+    position: "relative",
+    transform: CSS.Translate.toString(transform), // translate instead of transform to avoid squishing
+    transition: "width transform 0.2s ease-in-out",
+    whiteSpace: "nowrap",
+    width: header.column.getSize(),
+    zIndex: isDragging ? 1 : 0,
+  };
+
+  return (
+    <button {...attributes} {...listeners} style={style}>
       🟰
     </button>
   );
 };
 
 // Row Component
-const DraggableRow = ({ row }: { row: Row<Person> }) => {
+const RenderRow = ({
+  row,
+  columnOrder,
+}: {
+  row: Row<Person>;
+  columnOrder: string[];
+}) => {
   const { transform, transition, setNodeRef, isDragging } = useSortable({
     id: row.original.userId,
   });
@@ -65,11 +109,35 @@ const DraggableRow = ({ row }: { row: Row<Person> }) => {
     // connect row ref to dnd-kit, apply important styles
     <tr ref={setNodeRef} style={style}>
       {row.getVisibleCells().map((cell) => (
-        <td key={cell.id} style={{ width: cell.column.getSize() }}>
-          {flexRender(cell.column.columnDef.cell, cell.getContext())}
-        </td>
+        <SortableContext
+          items={columnOrder}
+          strategy={horizontalListSortingStrategy}
+        >
+          <RenderCol key={cell.column.id} cell={cell} />
+        </SortableContext>
       ))}
     </tr>
+  );
+};
+
+const RenderCol = ({ cell }: { cell: Cell<Person, unknown> }) => {
+  const { isDragging, setNodeRef, transform } = useSortable({
+    id: cell.column.id,
+  });
+
+  const style: CSSProperties = {
+    opacity: isDragging ? 0.8 : 1,
+    position: "relative",
+    transform: CSS.Translate.toString(transform), // translate instead of transform to avoid squishing
+    transition: "width transform 0.2s ease-in-out",
+    width: cell.column.getSize(),
+    zIndex: isDragging ? 1 : 0,
+  };
+
+  return (
+    <td style={style} ref={setNodeRef}>
+      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+    </td>
   );
 };
 
@@ -78,14 +146,9 @@ function App() {
   const columns = React.useMemo<ColumnDef<Person>[]>(
     () => [
       // Create a dedicated drag handle column. Alternatively, you could just set up dnd events on the rows themselves.
-      // {
-      //   id: "drag-handle",
-      //   header: "Move",
-      //   cell: ({ row }) => <RowDragHandleCell rowId={row.id} />,
-      //   size: 60,
-      // },
       {
         accessorKey: "firstName",
+        id: "firstName",
         cell: (info) => info.getValue(),
       },
       {
@@ -96,18 +159,22 @@ function App() {
       },
       {
         accessorKey: "age",
+        id: "age",
         header: () => "Age",
       },
       {
         accessorKey: "visits",
+        id: "visits",
         header: () => <span>Visits</span>,
       },
       {
         accessorKey: "status",
+        id: "status",
         header: "Status",
       },
       {
         accessorKey: "progress",
+        id: "progress",
         header: "Profile Progress",
       },
     ],
@@ -115,18 +182,23 @@ function App() {
   );
   const [data, setData] = React.useState(() => makeData(20));
 
-  const dataIds = React.useMemo<UniqueIdentifier[]>(
+  const rowIds = React.useMemo<UniqueIdentifier[]>(
     () => data?.map(({ userId }) => userId),
     [data]
   );
-
-  const rerender = () => setData(() => makeData(20));
+  const [columnOrder, setColumnOrder] = React.useState<string[]>(() =>
+    columns.map((c) => c.id!)
+  );
 
   const table = useReactTable({
     data,
     columns,
     getCoreRowModel: getCoreRowModel(),
     getRowId: (row) => row.userId, //required because row indexes will change
+    state: {
+      columnOrder,
+    },
+    onColumnOrderChange: setColumnOrder,
     debugTable: true,
     debugHeaders: true,
     debugColumns: true,
@@ -135,12 +207,22 @@ function App() {
   // reorder rows after drag & drop
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
-    if (active && over && active.id !== over.id) {
-      setData((data) => {
-        const oldIndex = dataIds.indexOf(active.id);
-        const newIndex = dataIds.indexOf(over.id);
-        return arrayMove(data, oldIndex, newIndex); //this is just a splice util
-      });
+    if (columnHover) {
+      if (active && over && active.id !== over.id) {
+        setColumnOrder((columnOrder) => {
+          const oldIndex = columnOrder.indexOf(active.id as string);
+          const newIndex = columnOrder.indexOf(over.id as string);
+          return arrayMove(columnOrder, oldIndex, newIndex); //this is just a splice util
+        });
+      }
+    } else {
+      if (active && over && active.id !== over.id) {
+        setData((data) => {
+          const oldIndex = rowIds.indexOf(active.id);
+          const newIndex = rowIds.indexOf(over.id);
+          return arrayMove(data, oldIndex, newIndex); //this is just a splice util
+        });
+      }
     }
   }
 
@@ -150,54 +232,82 @@ function App() {
     useSensor(KeyboardSensor, {})
   );
 
+  const [columnHover, setColumnHover] = React.useState(false);
+
   return (
     // NOTE: This provider creates div elements, so don't nest inside of <table> elements
     <DndContext
       collisionDetection={closestCenter}
-      modifiers={[restrictToVerticalAxis]}
+      modifiers={[
+        columnHover ? restrictToHorizontalAxis : restrictToVerticalAxis,
+      ]}
       onDragEnd={handleDragEnd}
       sensors={sensors}
     >
       <div className="p-2">
-        <div className="h-4" />
-        <div className="flex flex-wrap gap-2">
-          <button onClick={() => rerender()} className="border p-1">
-            Regenerate
-          </button>
-        </div>
-        <div className="h-4" />
-        <div style={{ display: "flex" }}>
-          <div>
+        {table.getHeaderGroups().map((headerGroup) => (
+          <div
+            key={headerGroup.id}
+            style={{ display: "flex", marginLeft: "26px" }}
+          >
             <SortableContext
-              items={dataIds}
-              strategy={verticalListSortingStrategy}
+              items={columnOrder}
+              strategy={horizontalListSortingStrategy}
             >
-              {table.getRowModel().rows.map((row) => (
-                <div key={row.id} style={{ height: "26px" }}>
-                  <RowDragHandleCell rowId={row.id} />
+              {headerGroup.headers.map((header) => (
+                <div
+                  onMouseEnter={() => {
+                    setColumnHover(true);
+                  }}
+                >
+                  <ColDragHandle key={header.id} header={header} />
                 </div>
               ))}
             </SortableContext>
           </div>
+        ))}
+        <div style={{ display: "flex" }}>
           <div>
-            {table.getHeaderGroups().map((headerGroup) => (
-              <div>{headerGroup.id}</div>
-            ))}
-            <table>
-              <tbody>
-                <SortableContext
-                  items={dataIds}
-                  strategy={verticalListSortingStrategy}
+            <SortableContext
+              items={rowIds}
+              strategy={verticalListSortingStrategy}
+            >
+              {table.getRowModel().rows.map((row) => (
+                <div
+                  key={row.id}
+                  style={{
+                    width: "26px",
+                    height: "26px",
+                    textAlign: "center",
+                    lineHeight: "26px",
+                    backgroundColor: "red",
+                  }}
+                  onMouseEnter={() => {
+                    setColumnHover(false);
+                  }}
                 >
-                  {table.getRowModel().rows.map((row) => (
-                    <DraggableRow key={row.id} row={row} />
-                  ))}
-                </SortableContext>
-              </tbody>
-            </table>
+                  <RowDragHandle rowId={row.id} />
+                </div>
+              ))}
+            </SortableContext>
           </div>
+          <table>
+            <tbody>
+              <SortableContext
+                items={columnHover ? columnOrder : rowIds}
+                strategy={
+                  columnHover
+                    ? horizontalListSortingStrategy
+                    : verticalListSortingStrategy
+                }
+              >
+                {table.getRowModel().rows.map((row) => (
+                  <RenderRow key={row.id} row={row} columnOrder={columnOrder} />
+                ))}
+              </SortableContext>
+            </tbody>
+          </table>
         </div>
-
         <pre>{JSON.stringify(data, null, 2)}</pre>
       </div>
     </DndContext>
