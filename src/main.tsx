@@ -256,11 +256,15 @@ function App() {
             >
               {headerGroup.headers.map((header) => (
                 <div
+                  key={header.id}
+                  style={{
+                    backgroundColor: "red",
+                  }}
                   onMouseEnter={() => {
                     setColumnHover(true);
                   }}
                 >
-                  <ColDragHandle key={header.id} header={header} />
+                  <ColDragHandle header={header} />
                 </div>
               ))}
             </SortableContext>
