@@ -143,7 +143,6 @@ const RenderCol = ({ cell }: { cell: Cell<Person, unknown> }) => {
   );
 };
 
-// Table Component
 function App() {
   const columns = React.useMemo<ColumnDef<Person>[]>(
     () => [
