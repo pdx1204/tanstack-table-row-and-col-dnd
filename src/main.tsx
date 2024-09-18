@@ -64,7 +64,7 @@ const RowDragHandle = ({ rowId }: { rowId: string }) => {
 const ColDragHandle = ({ header }: { header: Header<Person, unknown> }) => {
   console.log(header, "header-1");
 
-  const { attributes, isDragging, listeners, setNodeRef, transform } =
+  const { attributes, isDragging, listeners, transform } =
     useSortable({
       id: header.column.id,
     });
@@ -121,6 +121,8 @@ const RenderRow = ({
 };
 
 const RenderCol = ({ cell }: { cell: Cell<Person, unknown> }) => {
+  console.log(cell, "cell-1");
+  
   const { isDragging, setNodeRef, transform } = useSortable({
     id: cell.column.id,
   });
@@ -155,27 +157,22 @@ function App() {
         accessorFn: (row) => row.lastName,
         id: "lastName",
         cell: (info) => info.getValue(),
-        header: () => <span>Last Name</span>,
       },
       {
         accessorKey: "age",
         id: "age",
-        header: () => "Age",
       },
       {
         accessorKey: "visits",
         id: "visits",
-        header: () => <span>Visits</span>,
       },
       {
         accessorKey: "status",
         id: "status",
-        header: "Status",
       },
       {
         accessorKey: "progress",
         id: "progress",
-        header: "Profile Progress",
       },
     ],
     []
