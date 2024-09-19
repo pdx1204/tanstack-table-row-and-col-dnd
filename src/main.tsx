@@ -61,13 +61,18 @@ const RowDragHandle = ({ rowId }: { rowId: string }) => {
   );
 };
 
-const ColDragHandle = ({ header }: { header: Header<Person, unknown> }) => {
-  console.log(header, "header-1");
+const ColDragHandle = ({
+  columnId,
+  header,
+}: {
+  columnId: string;
+  header: Header<Person, unknown>;
+}) => {
+  console.log(header, "header");
 
-  const { attributes, isDragging, listeners, transform } =
-    useSortable({
-      id: header.column.id,
-    });
+  const { attributes, isDragging, listeners, transform } = useSortable({
+    id: columnId,
+  });
 
   const style: CSSProperties = {
     opacity: isDragging ? 0.8 : 1,
@@ -94,6 +99,7 @@ const RenderRow = ({
   row: Row<Person>;
   columnOrder: string[];
 }) => {
+  console.log(row, "row-1");
   const { transform, transition, setNodeRef, isDragging } = useSortable({
     id: row.original.userId,
   });
@@ -122,7 +128,7 @@ const RenderRow = ({
 
 const RenderCol = ({ cell }: { cell: Cell<Person, unknown> }) => {
   console.log(cell, "cell-1");
-  
+
   const { isDragging, setNodeRef, transform } = useSortable({
     id: cell.column.id,
   });
@@ -150,12 +156,10 @@ function App() {
       {
         accessorKey: "firstName",
         id: "firstName",
-        cell: (info) => info.getValue(),
       },
       {
-        accessorFn: (row) => row.lastName,
+        accessorKey: "lastName",
         id: "lastName",
-        cell: (info) => info.getValue(),
       },
       {
         accessorKey: "age",
@@ -166,22 +170,24 @@ function App() {
         id: "visits",
       },
       {
-        accessorKey: "status",
-        id: "status",
-      },
-      {
         accessorKey: "progress",
         id: "progress",
+      },
+      {
+        accessorKey: "status",
+        id: "status",
       },
     ],
     []
   );
   const [data, setData] = React.useState(() => makeData(20));
 
+  // 提供给 dnd-kit 的 rowIds
   const rowIds = React.useMemo<UniqueIdentifier[]>(
     () => data?.map(({ userId }) => userId),
     [data]
   );
+  // 提供给 dnd-kit 的 columnOrder
   const [columnOrder, setColumnOrder] = React.useState<string[]>(() =>
     columns.map((c) => c.id!)
   );
@@ -190,7 +196,7 @@ function App() {
     data,
     columns,
     getCoreRowModel: getCoreRowModel(),
-    getRowId: (row) => row.userId, //required because row indexes will change
+    getRowId: (row) => row.userId, // required because row indexes will change
     state: {
       columnOrder,
     },
@@ -260,7 +266,7 @@ function App() {
                     setColumnHover(true);
                   }}
                 >
-                  <ColDragHandle header={header} />
+                  <ColDragHandle columnId={header.column.id} header={header} />
                 </div>
               ))}
             </SortableContext>
