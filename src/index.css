@@ -3,8 +3,22 @@ html {
   font-size: 14px;
 }
 
+table {
+  width: 100%;
+  table-layout: fixed;
+}
+
 td {
-  border: 1px solid lightgray;
+  cursor: pointer;
+  height: 50px;
+}
+
+td > div {
+  height: 100%;
+  border: 1px solid #a1a2a4;
   padding: 2px 4px;
   background-color: white;
+}
+td > div:hover {
+  border-color: #fe6610;
 }
