@@ -2,17 +2,13 @@ import React, {
   createContext,
   CSSProperties,
   useContext,
-  useEffect,
-  useImperativeHandle,
   useMemo,
-  useRef,
 } from "react";
 
 import "./index.css";
 
 import {
   Cell,
-  Header,
   Row,
   Table,
   flexRender,
@@ -53,6 +49,10 @@ import { faker } from "@faker-js/faker";
 const RenderTableContent = createContext<{
   size: any;
   table: Table<TableData>;
+  currentPosition: { row: number; column: number };
+  setCurrentPosition: React.Dispatch<
+    React.SetStateAction<{ row: number; column: number }>
+  >;
 }>(null!);
 
 export default React.memo(function RenderTable(props: {
@@ -127,6 +127,10 @@ export default React.memo(function RenderTable(props: {
     useSensor(KeyboardSensor, {})
   );
 
+  const [currentPosition, setCurrentPosition] = React.useState({
+    row: -1,
+    column: -1,
+  });
   const [columnHover, setColumnHover] = React.useState(false);
 
   const onEnterRow = () => {
@@ -141,12 +145,19 @@ export default React.memo(function RenderTable(props: {
     []
   );
 
-  const size = useSize(document.querySelector(`.${renderTableClass} td`));
+  const size = useSize(() => document.querySelector(`.${renderTableClass} td`));
 
   return (
     // NOTE: This provider creates div elements, so don't nest inside of <table> elements
-    <RenderTableContent.Provider value={{ size, table }}>
-      <div className={`render-table ${renderTableClass}`}>
+    <RenderTableContent.Provider
+      value={{ size, table, currentPosition, setCurrentPosition }}
+    >
+      <div
+        className={`render-table ${renderTableClass}`}
+        onMouseOut={() => {
+          setCurrentPosition({ row: -1, column: -1 });
+        }}
+      >
         <DndContext
           collisionDetection={closestCenter}
           modifiers={[
@@ -161,7 +172,11 @@ export default React.memo(function RenderTable(props: {
           />
           <div style={{ display: "flex" }}>
             <RowsDragHandle rowIds={rowIds} onEnterRow={onEnterRow} />
-            <table>
+            <table
+              onMouseOut={() => {
+                setCurrentPosition({ row: -1, column: -1 });
+              }}
+            >
               <tbody>
                 <SortableContext
                   items={columnHover ? columnOrder : rowIds}
@@ -171,9 +186,10 @@ export default React.memo(function RenderTable(props: {
                       : verticalListSortingStrategy
                   }
                 >
-                  {table.getRowModel().rows.map((row) => (
+                  {table.getRowModel().rows.map((row, rowIndex) => (
                     <RenderRow
                       key={row.id}
+                      rowIndex={rowIndex}
                       row={row}
                       columnOrder={columnOrder}
                     />
@@ -208,13 +224,7 @@ const RowDragHandle = ({ rowId }: { rowId: string }) => {
   );
 };
 
-const ColumnDragHandle = ({
-  columnId,
-  header,
-}: {
-  columnId: string;
-  header: Header<TableData, unknown>;
-}) => {
+const ColumnDragHandle = ({ columnId }: { columnId: string }) => {
   const { attributes, isDragging, listeners, transform } = useSortable({
     id: columnId,
   });
@@ -241,23 +251,28 @@ const RowsDragHandle = ({
   rowIds: UniqueIdentifier[];
   onEnterRow: () => void;
 }) => {
-  const { table, size } = useContext(RenderTableContent);
+  const { table, size, currentPosition, setCurrentPosition } =
+    useContext(RenderTableContent);
 
   return (
-    <div style={{ marginRight: "5px" }}>
+    <div style={{ marginRight: "5px" }} onMouseOver={onEnterRow}>
       <SortableContext items={rowIds} strategy={verticalListSortingStrategy}>
-        {table.getRowModel().rows.map((row) => (
+        {table.getRowModel().rows.map((row, index) => (
           <div
             key={row.id}
             style={{
-              width: "26px",
               height: size?.height,
               display: "flex",
               justifyContent: "center",
               alignItems: "center",
-              backgroundColor: "red",
+              opacity: currentPosition.row === index ? 1 : 0,
+              transition: "opacity 0.2s ease-in-out",
             }}
-            onMouseEnter={onEnterRow}
+            onMouseOver={() => {
+              setCurrentPosition((old) => {
+                return { ...old, row: index };
+              });
+            }}
           >
             <RowDragHandle rowId={row.id} />
           </div>
@@ -274,9 +289,10 @@ const ColumnsDragHandle = ({
   columnOrder: string[];
   onEnterColumn: () => void;
 }) => {
-  const { table, size } = useContext(RenderTableContent);
+  const { table, size, currentPosition, setCurrentPosition } =
+    useContext(RenderTableContent);
   return (
-    <>
+    <div onMouseOver={onEnterColumn}>
       {table.getHeaderGroups().map((headerGroup) => (
         <div
           key={headerGroup.id}
@@ -286,7 +302,7 @@ const ColumnsDragHandle = ({
             items={columnOrder}
             strategy={horizontalListSortingStrategy}
           >
-            {headerGroup.headers.map((header) => (
+            {headerGroup.headers.map((header, index) => (
               <div
                 key={header.id}
                 style={{
@@ -294,26 +310,33 @@ const ColumnsDragHandle = ({
                   justifyContent: "center",
                   alignItems: "center",
                   textAlign: "center",
-                  backgroundColor: "red",
+                  opacity: currentPosition.column === index ? 1 : 0,
                   width: size?.width,
+                  transition: "opacity 0.2s ease-in-out",
                 }}
-                onMouseEnter={onEnterColumn}
+                onMouseOver={() => {
+                  setCurrentPosition((old) => {
+                    return { ...old, column: index };
+                  });
+                }}
               >
-                <ColumnDragHandle columnId={header.column.id} header={header} />
+                <ColumnDragHandle columnId={header.column.id} />
               </div>
             ))}
           </SortableContext>
         </div>
       ))}
-    </>
+    </div>
   );
 };
 
 // Row Component
 const RenderRow = ({
+  rowIndex,
   row,
   columnOrder,
 }: {
+  rowIndex: number;
   row: Row<TableData>;
   columnOrder: string[];
 }) => {
@@ -331,19 +354,33 @@ const RenderRow = ({
   return (
     // connect row ref to dnd-kit, apply important styles
     <tr ref={setNodeRef} style={style}>
-      {row.getVisibleCells().map((cell) => (
+      {row.getVisibleCells().map((cell, columnIndex) => (
         <SortableContext
           items={columnOrder}
           strategy={horizontalListSortingStrategy}
         >
-          <RenderCell key={cell.column.id} cell={cell} />
+          <RenderCell
+            key={cell.column.id}
+            cell={cell}
+            rowIndex={rowIndex}
+            columnIndex={columnIndex}
+          />
         </SortableContext>
       ))}
     </tr>
   );
 };
 
-const RenderCell = ({ cell }: { cell: Cell<TableData, unknown> }) => {
+const RenderCell = ({
+  cell,
+  rowIndex,
+  columnIndex,
+}: {
+  rowIndex: number;
+  columnIndex: number;
+  cell: Cell<TableData, unknown>;
+}) => {
+  const { setCurrentPosition } = useContext(RenderTableContent);
   const { isDragging, setNodeRef, transform } = useSortable({
     id: cell.column.id,
   });
@@ -357,7 +394,13 @@ const RenderCell = ({ cell }: { cell: Cell<TableData, unknown> }) => {
   };
 
   return (
-    <td style={style} ref={setNodeRef}>
+    <td
+      style={style}
+      ref={setNodeRef}
+      onMouseOver={() => {
+        setCurrentPosition({ row: rowIndex, column: columnIndex });
+      }}
+    >
       <div>{flexRender(cell.column.columnDef.cell, cell.getContext())}</div>
     </td>
   );
